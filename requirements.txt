@@ -1,4 +1,5 @@
 streamlit>=1.25
-ollama>=0.0.0
 python-dotenv>=1.0.0
-# Note: 'ollama' package name assumed from docs. If installation differs, adjust accordingly.
+openrouter-client-unofficial>=0.0.4
+
+# Note: 'openrouter' package name assumed. Adjust if necessary.

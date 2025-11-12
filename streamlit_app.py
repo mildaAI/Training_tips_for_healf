@@ -1,6 +1,7 @@
 import os
 import streamlit as st
 from typing import List, Dict, Tuple
+from openrouter_client import OpenRouterClient
 
 # Extra deps for connectivity check
 import requests
@@ -8,19 +9,31 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Try to import Ollama client. If not installed, instruct user in README/requirements.
-try:
-    from ollama import Client
-except Exception:
-    Client = None
+# Updated UI and text for a fresh look
+st.set_page_config(
+    page_title="AI-Powered Fitness Planner",
+    page_icon="🏋️‍♂️",
+    layout="wide"
+)
 
-# App configuration
-st.set_page_config(page_title="Ollama Chat — gemma3:4b", layout="wide")
+st.title("🌟 Your Personalized Fitness Journey")
+st.markdown(
+    """
+    Welcome to the **AI-Powered Fitness Planner**! 🎯
+    
+    🏋️‍♂️ **Achieve your fitness goals** with tailored exercise plans.
+    
+    💡 **How it works:**
+    - Enter your details and preferences.
+    - Let our AI create a personalized weekly plan for you.
+    - Stay motivated and track your progress!
+    
+    🚀 Let's get started!
+    """
+)
 
-st.title("Chat with gemma3:4b (Ollama)")
 
-
-def check_ollama_host(host: str, timeout: float = 3.0) -> Tuple[bool, str]:
+def check_ollima_host(host: str, timeout: float = 3.0) -> Tuple[bool, str]:
     """Try a simple HTTP GET to the provided host. Returns (ok, message).
 
     We do a plain GET to the host root to detect connection/refused and surface
@@ -31,7 +44,7 @@ def check_ollama_host(host: str, timeout: float = 3.0) -> Tuple[bool, str]:
         resp = requests.get(host, timeout=timeout)
         return True, f"Reachable: HTTP {resp.status_code}"
     except requests.exceptions.ConnectionError:
-        return False, "Connection refused — is Ollama running? Try `ollama serve`"
+        return False, "Connection refused — is Ollima running? Try `ollima serve`"
     except requests.exceptions.InvalidURL:
         return False, "Invalid host URL. Make sure it starts with http:// or https://"
     except requests.exceptions.Timeout:
@@ -53,186 +66,192 @@ def list_models(host: str, timeout: float = 3.0):
         return []
 
 
+# Sidebar for configuration
 with st.sidebar:
-    st.header("Connection")
-    ollama_host = st.text_input("Ollama host", value=os.getenv("OLLAMA_HOST", "http://localhost:11434"))
-    # Try to list models for the host the user entered and present them in a selectbox.
-    # There's also a Refresh button below if you just installed/updated a model.
-    refresh_models = st.button("Refresh models")
-    available_models = list_models(ollama_host)
-    # Prefer gemma3:1b for this app if present, otherwise choose first available
-    if available_models:
-        preferred_index = 0
-        if 'gemma3:1b' in available_models:
-            preferred_index = available_models.index('gemma3:1b')
-        model = st.selectbox("Model", options=available_models, index=preferred_index)
-    else:
-        model = st.text_input("Model", value="gemma3:1b")
-        if refresh_models:
-            # If user clicked refresh but no models were found, show actionable hints
-            st.info("No models found at the provided host. If you just installed a model, try restarting Ollama (e.g. `ollama serve`) or pulling the model with `ollama pull gemma3:1b`.")
-    max_history = st.number_input("Max messages to keep (per call)", min_value=1, max_value=50, value=10)
-    clear = st.button("Clear conversation")
-    check = st.button("Check connection")
+    st.header("⚙️ App Settings")
+    
+    # OpenRouter API Key input
+    api_key = st.text_input(
+        "🔑 OpenRouter API Key",
+        type="password",
+        placeholder="Enter your API key",
+        help="Your API key is required to connect to the AI models"
+    )
+    
+    # Model selection
+    st.subheader("🤖 AI Model Selection")
+    model_options = {
+        "Qwen3 14B": "qwen/qwen3-14b:free"
+    }
+    
+    selected_model_name = st.selectbox(
+        "Choose an AI model",
+        options=list(model_options.keys()),
+        index=0,  # Default to Qwen3 14B
+        help="Select the AI model from available options"
+    )
+    
+    selected_model = model_options[selected_model_name]
+    st.info(f"🤖 Using AI Model: **{selected_model}**")
 
-    if check:
-        ok, msg = check_ollama_host(ollama_host)
-        if ok:
-            st.success(msg)
-        else:
-            st.error(msg)
-            st.info("Typical fixes: run `ollama serve` in a terminal, verify host/port, or set OLLAMA_HOST in .env")
+# Main form
+st.header("📝 Share Your Fitness Details")
 
-
-if "messages" not in st.session_state:
-    # messages is a list of dicts: {'role': 'user'|'assistant'|'system', 'content': '...'}
-    st.session_state.messages = []
-
-if clear:
-    st.session_state.messages = []
-
-if Client is None:
-    st.error("The `ollama` Python package is not installed.")
-    with st.expander("How to install the Python client"):
-        st.write(
-            "Install the dependencies (recommended inside a virtualenv). If the package name differs for your environment, follow the provider's install instructions."
+with st.form("user_info_form"):
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Age input with validation
+        age_input = st.text_input(
+            "🎂 Your Age",
+            placeholder="e.g., 25",
+            help="Please enter your age in years"
         )
-        st.code("pip install -r requirements.txt")
-        st.code("# or, if available:\n# pip install ollama")
+        
+        # Health issues
+        health_issues = st.text_area(
+            "🩺 Known Health Issues",
+            placeholder="e.g., None, or list any conditions",
+            help="Tell us about any health conditions we should consider"
+        )
+    
+    with col2:
+        # Exercise time
+        exercise_time = st.text_input(
+            "⏱️ Daily Exercise Time (minutes)",
+            placeholder="e.g., 30",
+            help="How much time can you dedicate to exercise daily?"
+        )
+        
+        # Fitness goal
+        fitness_goal = st.radio(
+            "🎯 Your Fitness Goal",
+            options=["Lose weight", "Gain muscle"],
+            help="Select your primary fitness goal"
+        )
+    
+    # Submit button
+    submitted = st.form_submit_button("✨ Generate My Plan", use_container_width=True)
 
-# Conversation area
-col1, col2 = st.columns([3, 1])
-
-with col1:
-    st.subheader("Conversation")
-
-    for msg in st.session_state.messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        if role == "system":
-            st.markdown(f"**System:** {content}")
-        elif role == "user":
-            st.markdown(f"**You:** {content}")
-        else:
-            st.markdown(f"**Assistant:** {content}")
-
-    response_placeholder = st.empty()
-
-with col2:
-    st.subheader("Controls")
-    system_prompt = st.text_area("System prompt (optional)", value="", height=80)
-
-    st.markdown("---")
-    st.write("### User inputs for weekly plan")
-    user_age = st.number_input("Age (years)", min_value=10, max_value=120, value=30)
-    known_problems = st.text_area("Known health problems (comma-separated)", value="", height=80)
-    time_for_exercise = st.number_input("Time per session (minutes)", min_value=10, max_value=240, value=45)
-    fitness_goal = st.selectbox("Fitness goal", options=["Lose weight", "Gain muscle mass"], index=0)
-
-    send = st.button("Generate weekly plan")
-
-
-def safe_client(host: str):
-    """Create an Ollama client or return None."""
-    if Client is None:
-        return None
-    try:
-        return Client(host=host)
-    except Exception:
-        # Fall back to default constructor
-        try:
-            return Client()
-        except Exception:
-            return None
-
-
-if send:
-    # Build a tailored prompt for the weekly plan using the provided inputs
-    plan_request = (
-        f"Create a 7-day weekly exercise plan for a {user_age}-year-old. "
-        f"Known health problems: {known_problems or 'None'}. "
-        f"Available time per session: {time_for_exercise} minutes. "
-        f"Fitness goal: {fitness_goal}. "
-        "Provide a daily breakdown (day name, exercise type, sets/reps or duration, intensity), safety notes, and a short warm-up and cool-down. Be concise and use bullet points."
-    )
-
-    # Add optional system prompt if provided
-    if system_prompt.strip():
-        st.session_state.messages.append({"role": "system", "content": system_prompt.strip()})
-    # Append the plan request as a user message
-    st.session_state.messages.append({"role": "user", "content": plan_request})
-
-    # Build messages slice to send
-    messages_to_send = st.session_state.messages[-int(max_history):]
-
-    # Quick connectivity check before creating the client
-    ok, msg = check_ollama_host(ollama_host)
-    if not ok:
-        st.error(f"Ollama host check failed: {msg}")
+# Process the form
+if submitted:
+    # Validation
+    errors = []
+    
+    # Check if API key is provided
+    if not api_key:
+        errors.append("⚠️ Please enter your OpenRouter API key in the sidebar")
+    
+    # Validate age input
+    if not age_input:
+        errors.append("⚠️ Please enter your age")
     else:
-        client = safe_client(ollama_host)
-        if client is None:
-            st.error("Could not create Ollama client. Check that the `ollama` package is installed and Ollama is reachable.")
-        else:
-            # Stream the assistant response
+        try:
+            age = int(age_input)
+            if age < 1 or age > 120:
+                errors.append("⚠️ Please enter a valid age between 1 and 120")
+        except ValueError:
+            errors.append("⚠️ Age must be a number, not letters or special characters")
+    
+    # Validate exercise time
+    if not exercise_time:
+        errors.append("⚠️ Please enter your daily exercise time")
+    else:
+        try:
+            time_minutes = int(exercise_time)
+            if time_minutes < 1:
+                errors.append("⚠️ Exercise time must be at least 1 minute")
+        except ValueError:
+            errors.append("⚠️ Exercise time must be a number")
+    
+    # Display errors or generate plan
+    if errors:
+        for error in errors:
+            st.error(error)
+    else:
+        # Create the prompt
+        prompt = f"""You are a professional Health and Fitness Coach. Based on the following information, create a personalized weekly exercise plan:
+
+- Age: {age} years old
+- Known health issues: {health_issues if health_issues else "None"}
+- Available daily exercise time: {time_minutes} minutes
+- Fitness goal: {fitness_goal}
+
+Please provide:
+1. A detailed weekly exercise plan (7 days)
+2. Specific exercises for each day
+3. Duration and repetitions/sets
+4. Any important considerations based on the health information provided
+5. Tips for staying motivated and safe
+
+Format the response in a clear, easy-to-follow structure.
+
+Start the response with: 'This is UAB Sveikata health agent speaking.'
+End the response with: 'This answer was generated by AI and is not a professional doctor opinion.'"""
+
+        # Generate response
+        with st.spinner("🤔 Generating your personalized exercise plan..."):
             try:
-                stream = client.chat(model=model, messages=messages_to_send, stream=True)
+                # Initialize OpenRouter client
+                client = OpenRouterClient(api_key=api_key)
+                
+                # Create chat completion
+                response = client.chat.create(
+                    model=selected_model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a professional Health and Fitness Coach. Provide detailed, safe, and personalized exercise recommendations."
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ]
+                )
+                
+                # Display the response
+                st.success("✅ Your personalized exercise plan is ready!")
+                st.markdown("---")
+                
+                # Display the plan in a nice container
+                st.markdown("### 📅 Your Weekly Exercise Plan")
+                st.markdown(response.choices[0].message.content)
+                st.markdown("---")
+                st.warning("⚠️ **Disclaimer:** This is AI-generated response and cannot be treated as professional doctor's advice.")
+                
+                # Option to download the plan
+                plan_text = f"""PERSONALIZED EXERCISE PLAN
+
+Age: {age} years
+Health Issues: {health_issues if health_issues else "None"}
+Daily Exercise Time: {time_minutes} minutes
+Goal: {fitness_goal}
+
+{response.choices[0].message.content}
+
+---
+DISCLAIMER: This is AI-generated response and cannot be treated as professional doctor's advice.
+"""
+                
+                st.download_button(
+                    label="📥 Download Exercise Plan",
+                    data=plan_text,
+                    file_name="exercise_plan.txt",
+                    mime="text/plain"
+                )
+                
             except Exception as e:
-                err_text = str(e)
-                # Detect common out-of-memory / resource errors and give tailored advice
-                if 'requires more system memory' in err_text or 'out of memory' in err_text.lower() or 'memory' in err_text.lower():
-                    st.error("The model failed to run due to insufficient system memory.")
-                    with st.expander("Why this happened and how to fix it"):
-                        st.write(
-                            "The selected model requires more RAM than is currently available on this machine.\n"
-                            "Common fixes:\n"
-                        )
-                        st.write("- Use a smaller model (pull or select a lighter model, e.g. `gemma3:latest` or another small variant).")
-                        st.write("- If you need `gemma3:4b`, run Ollama on a machine with more RAM or with GPU support.")
-                        st.write("- Add swap / increase system memory (Windows: create a pagefile; Linux: create a swapfile).")
-                        st.write("- Use a quantized or lower-precision variant if available (check Ollama model options).")
-                        st.code("# Example: pull a specific model (if available)\nollama pull gemma3:4b")
-                        st.write("After preparing, restart the Ollama server and click 'Refresh models' in the app.")
-                    st.write(f"(raw error: {err_text})")
-                else:
-                    st.error(f"Error calling Ollama: {err_text}")
-                stream = None
+                st.error(f"❌ Error generating plan: {str(e)}")
+                st.info("💡 Please check your API key and try again. Make sure you have credits in your OpenRouter account.")
 
-            assistant_text = ""
-            if stream is not None:
-                # Use the placeholder to progressively write
-                for chunk in stream:
-                    # chunk may be a dict-like or object with .message
-                    content_piece = ""
-                    try:
-                        # Prefer dict access
-                        if isinstance(chunk, dict):
-                            content_piece = chunk.get("message", {}).get("content", "")
-                        else:
-                            # object attribute access
-                            content_piece = getattr(chunk, "message", None)
-                            if content_piece is not None:
-                                content_piece = getattr(content_piece, "content", "")
-                    except Exception:
-                        content_piece = ""
-
-                    assistant_text += content_piece
-                    response_placeholder.markdown(f"**Assistant:** {assistant_text}")
-
-                # Append final assistant message to session state
-                st.session_state.messages.append({"role": "assistant", "content": assistant_text})
-
-    # Clear input box
-    st.session_state.user_input = ""
-
-
+# Footer
 st.markdown("---")
-st.caption("Note: This app uses the local Ollama HTTP API. Use the 'Check connection' button in the sidebar to verify the host before sending messages.")
-
-# Footer with quick troubleshooting
-with st.expander("Troubleshooting"):
-    st.write(
-        "If you see connection errors: ensure Ollama is running (usually `ollama serve`), the host is correct (default http://localhost:11434), and the `ollama` Python package is installed."
-    )
-    st.write("Windows PowerShell example to start Ollama (if installed):")
-    st.code("ollama serve")
+st.markdown(
+    """
+    <div style='text-align: center; color: #666;'>
+        <p>💪 Stay healthy, stay strong! Remember to consult with healthcare professionals before starting any new exercise program.</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
