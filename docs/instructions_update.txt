@@ -1,0 +1,4 @@
+Update the model:
+Use the OpenRouter API Key stored in the .env file.
+Use the Qwen3-14B model from OpenRouter for all API calls.
+Program must have the same futures. 

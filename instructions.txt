@@ -1,0 +1,13 @@
+We need to create a streamlit app in python, where we can chat with AI model.
+The program will use streamlit for the browser interface. 
+Integrate the local gemma3:1b model that is installed to computer through Ollama.
+Either use the Python Ollama library.
+We should be able to keep continuous conversation with selected model. 
+After selecting a model, the program will allow you to enter:
+User's age (in years)
+User inputs: age, known health problems, time for exercise, fitness goal (Lose weight / Gain muscle mass)
+Button: "Generate weekly plan"
+The program should run fully locally without requiring any API key.
+Generate a weekly exercise plan for the user based on the input data using the local model. 
+
+Use documentation in instruction.txt file
